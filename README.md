@@ -4,53 +4,116 @@ Gear Slot — приложение для бронирования общего 
 
 **Стек** — Nuxt 4, Vue 3 Composition API, TypeScript, Nuxt UI 4, Tailwind CSS 4 и ESLint. API работает в отдельном репозитории на Go, Gin, GORM и PostgreSQL.
 
-## Локальный запуск
+## Первый запуск на Windows через WSL 2
 
-Для фронтенда используйте Node.js 24 и npm 11. Для Go и PostgreSQL следуйте [README бэкенда](../gear-slot-be/README.md). Go-сервис по умолчанию слушает `127.0.0.1:8080`.
+Понадобятся Ubuntu в WSL и доступ к [репозиторию Go API](https://github.com/ETU-devs/gear-slot-be). Оба приложения запускаются внутри одной Ubuntu. В браузере Windows нужно будет открыть только фронтенд.
 
-### 1. Запустите Go API
+### 1. Установите Ubuntu в WSL
 
-Создайте PostgreSQL-базу и роль по инструкции бэкенда, если их ещё нет. В корне бэкенда скопируйте `.env.example` в `.env`, если собственного файла ещё нет. Заполните `DATABASE_URL` и `JWT_SECRET`. Для секрета можно использовать результат `openssl rand -hex 32`.
+Если Ubuntu уже работает в WSL 2, переходите к следующему шагу. Иначе откройте **PowerShell от имени администратора** и выполните:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Если Windows попросит, перезагрузите компьютер. Откройте **Ubuntu** из меню «Пуск» и при первом запуске создайте пользователя Linux. Проверить версию WSL можно командой `wsl -l -v` в PowerShell. У Ubuntu в столбце `VERSION` должно стоять `2`. [Инструкция Microsoft по установке WSL](https://learn.microsoft.com/ru-ru/windows/wsl/install).
+
+Дальше все команды выполняйте в терминале **Ubuntu**. Храните проекты в домашней папке Linux, например в `~/projects`.
+
+### 2. Установите Node.js и скачайте фронтенд
 
 ```bash
-cd /home/alexsudarev/gear-slot-be
+sudo apt update
+sudo apt install -y git curl ca-certificates
+```
+
+В проекте используется **Node.js 24** и **npm 11**. Если этих версий ещё нет в Ubuntu, установите их через nvm. [Документация nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh -o /tmp/gear-slot-nvm-install.sh
+bash /tmp/gear-slot-nvm-install.sh
+source ~/.bashrc
+nvm install 24
+node -v
+npm -v
+```
+
+Проверьте, что `node -v` показывает `v24.x.x`, а `npm -v` — `11.x.x`.
+
+```bash
+mkdir -p ~/projects
+cd ~/projects
+git clone https://github.com/ETU-devs/gear-slot-fe.git
+cd gear-slot-fe
+npm ci
+cp -n .env.example .env
+```
+
+`npm ci` устанавливает зависимости из `package-lock.json`. В `.env` уже указан стандартный адрес Go API `http://127.0.0.1:8080`. Если API уже запущен на этом адресе, переходите к шагу 4. Если он работает на другом адресе, впишите его в `NUXT_BACKEND_URL`.
+
+### 3. Запустите Go API и PostgreSQL
+
+В отдельной вкладке Ubuntu установите **Go 1.27 или новее**, если его ещё нет. Для WSL выберите Linux в официальной инструкции. После установки проверьте команду `go version` в терминале Ubuntu. [Установка Go](https://go.dev/doc/install).
+
+```bash
+cd ~/projects
+git clone https://github.com/ETU-devs/gear-slot-be.git
+cd gear-slot-be
+sudo apt install -y postgresql openssl nano
+sudo service postgresql start
+pg_isready -h 127.0.0.1 -p 5432
+```
+
+Если GitHub запрашивает доступ к репозиторию бэкенда, войдите в аккаунт команды или попросите владельца выдать доступ. `pg_isready` должен сообщить `accepting connections`. Для новой локальной базы выполните следующие команды. Первая предложит придумать пароль для пользователя PostgreSQL `gear_slot`. Для локального запуска можно использовать длинный пароль из букв и цифр, чтобы его было проще вставить в адрес базы.
+
+```bash
+(cd /tmp && sudo -u postgres createuser --pwprompt gear_slot)
+(cd /tmp && sudo -u postgres createdb --owner=gear_slot gear_slot)
+cp -n .env.example .env
+openssl rand -hex 32
+nano .env
+```
+
+В файле бэкенда `.env` замените `CHANGE_ME` в строке `DATABASE_URL` на пароль, который вы задали для PostgreSQL. Если в пароле есть специальные символы URI, например `@`, `:` или `#`, в URL их нужно закодировать. Вставьте строку из `openssl` в `JWT_SECRET`. Оставьте `HTTP_ADDR=127.0.0.1:8080`. Для сохранения в nano нажмите **Ctrl+O**, **Enter**, затем **Ctrl+X**.
+
+```bash
 set -a
 source .env
 set +a
+go mod download
 go run ./cmd/migrate up
-go run ./cmd/seed    # по желанию, добавляет оборудование для проверки
+go run ./cmd/seed
 go run ./cmd/api
 ```
 
-### 2. Запустите Nuxt
+Миграции создают таблицы, а команда `seed` наполняет каталог примерами оборудования. Оставьте Go API запущенным. Подробные настройки базы описаны в [README бэкенда](https://github.com/ETU-devs/gear-slot-be#readme).
+
+### 4. Запустите фронтенд и проверьте работу
+
+Вернитесь в первую вкладку Ubuntu или откройте новую:
 
 ```bash
-cd /home/alexsudarev/gear-slot-fe
-npm ci
-cp -n .env.example .env
+cd ~/projects/gear-slot-fe
 npm run dev
 ```
 
-Откройте `http://localhost:3000`. Настройки фронтенда читаются из приватного `runtimeConfig`.
+В браузере Windows откройте [http://localhost:3000](http://localhost:3000). Нажмите «Создать аккаунт», зарегистрируйтесь и войдите. В каталоге появится оборудование, загруженное командой `seed`. Откройте карточку доступного предмета, забронируйте время и проверьте результат в разделе «Мои бронирования».
 
-| Переменная | Назначение |
-| --- | --- |
-| `NUXT_BACKEND_URL` | Адрес Go API. По умолчанию `http://127.0.0.1:8080`. |
-| `NUXT_APP_ORIGIN` | Внешний origin Nuxt без пути и завершающего слеша, например `https://gear.example.org`. Укажите его при размещении за HTTPS-прокси. При пустом значении используется origin входящего запроса. |
+Если Nuxt выбрал другой порт, откройте адрес из его вывода в терминале. Если приложение сообщает, что сервис недоступен, проверьте, что Go API работает во второй вкладке и что `NUXT_BACKEND_URL` совпадает с его адресом. После изменения `.env` перезапустите Nuxt.
 
-### 3. Назначьте первого администратора
+### Как назначить первого администратора
 
-Создайте аккаунт через `/register`. Откройте второй терминал, загрузите окружение Go и выполните команду с email этого аккаунта.
+Сначала зарегистрируйте аккаунт в интерфейсе. Затем в новой вкладке Ubuntu выполните команду с email этого аккаунта:
 
 ```bash
-cd /home/alexsudarev/gear-slot-be
+cd ~/projects/gear-slot-be
 set -a
 source .env
 set +a
 go run ./cmd/admin admin@example.com
 ```
 
-После обновления каталога кнопка «Добавить оборудование» появится у администратора. Go проверяет актуальную роль по данным из PostgreSQL.
+После обновления страницы каталога появится кнопка «Добавить оборудование».
 
 ## Маршруты
 
@@ -96,4 +159,4 @@ npm run build
 NUXT_BACKEND_URL=http://127.0.0.1:8080 node .output/server/index.mjs
 ```
 
-В production передайте переменные окружения процессу Node.js. При размещении за HTTPS-прокси задайте `NUXT_APP_ORIGIN` с внешним HTTPS-адресом. GitHub Actions запускает установку из npm lockfile, линтер, проверку типов и сборку на push и pull request.
+В production передайте переменные окружения процессу Node.js. При размещении за HTTPS-прокси задайте `NUXT_APP_ORIGIN` с внешним HTTPS-адресом без пути и завершающего слеша. GitHub Actions запускает установку из npm lockfile, линтер, проверку типов и сборку на push и pull request.
