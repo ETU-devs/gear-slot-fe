@@ -16,6 +16,10 @@ const statusQuery = computed(() => {
   return status === 'available' || status === 'maintenance' ? status : 'all'
 })
 const search = ref(searchQuery.value)
+const catalogQuery = computed(() => ({
+  search: search.value.trim() || undefined,
+  status: statusQuery.value === 'all' ? undefined : statusQuery.value
+}))
 const filters: { label: string, value: EquipmentStatus | 'all' }[] = [
   { label: 'Все статусы', value: 'all' },
   ...equipmentStatuses
@@ -43,6 +47,7 @@ watch(searchQuery, (value) => {
   clearTimeout(searchTimer)
   search.value = value
 })
+onBeforeRouteLeave(() => clearTimeout(searchTimer))
 onScopeDispose(() => clearTimeout(searchTimer))
 
 const { data, status, error, refresh } = await useAsyncData(
@@ -170,6 +175,7 @@ function book(item: Equipment) {
           v-for="item in data"
           :key="item.id"
           :item="item"
+          :details-to="{ path: `/equipment/${item.id}`, query: catalogQuery }"
           @book="book"
         />
       </div>

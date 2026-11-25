@@ -27,6 +27,18 @@ export interface Booking {
   updated_at: string
 }
 
+export interface BusyInterval {
+  start_time: string
+  end_time: string
+}
+
+export interface EquipmentAvailability {
+  equipment_id: number
+  from: string
+  to: string
+  busy_intervals: BusyInterval[]
+}
+
 export interface LoginResponse {
   access_token: string
   token_type: 'Bearer'

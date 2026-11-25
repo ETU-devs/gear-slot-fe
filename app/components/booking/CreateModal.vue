@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import type { FormError } from '@nuxt/ui'
+import type { CalendarDate, Time } from '@internationalized/date'
 import type { Booking, Equipment } from '#shared/types/api'
-import { apiMessage } from '~/utils/apiError'
+import { apiMessage, apiStatus } from '~/utils/apiError'
+import { localBookingDate } from '~/utils/bookingTime'
 
-const props = defineProps<{ item: Equipment }>()
+const props = defineProps<{ item: Equipment, initialDate?: CalendarDate }>()
+const emit = defineEmits<{ created: [], conflict: [] }>()
 const open = defineModel<boolean>('open', { required: true })
-const state = reactive({ start: '', end: '' })
+const state = shallowReactive<{
+  startDate?: CalendarDate
+  startTime?: Time
+  endDate?: CalendarDate
+  endTime?: Time
+}>({})
 const pending = ref(false)
 const errorMessage = ref('')
 const api = useGearApi()
@@ -13,36 +21,31 @@ const toast = useToast()
 
 watch(open, (value) => {
   if (value) {
-    Object.assign(state, { start: '', end: '' })
+    Object.assign(state, { startDate: props.initialDate, startTime: undefined, endDate: props.initialDate, endTime: undefined })
     errorMessage.value = ''
   }
 })
 
-function parseLocal(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime()) || date.getFullYear() < 1) return null
-
-  const offset = date.getTimezoneOffset() * 60_000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16) === value ? date : null
-}
-
 function validate(values: typeof state): FormError[] {
   const errors: FormError[] = []
-  const start = parseLocal(values.start)
-  const end = parseLocal(values.end)
-  if (!start) errors.push({ name: 'start', message: 'Укажите корректное местное время начала.' })
-  if (!end) errors.push({ name: 'end', message: 'Укажите корректное местное время окончания.' })
+  const start = localBookingDate(values.startDate, values.startTime)
+  const end = localBookingDate(values.endDate, values.endTime)
+  if (!values.startDate) errors.push({ name: 'startDate', message: 'Выберите дату начала.' })
+  if (!values.endDate) errors.push({ name: 'endDate', message: 'Выберите дату окончания.' })
+  if (!values.startTime) errors.push({ name: 'startTime', message: 'Укажите время начала.' })
+  else if (values.startDate && !start) errors.push({ name: 'startTime', message: 'Это время недоступно в часовом поясе устройства.' })
+  if (!values.endTime) errors.push({ name: 'endTime', message: 'Укажите время окончания.' })
+  else if (values.endDate && !end) errors.push({ name: 'endTime', message: 'Это время недоступно в часовом поясе устройства.' })
   if (start && end && start >= end) {
-    errors.push({ name: 'end', message: 'Окончание должно быть позже начала.' })
+    errors.push({ name: 'endTime', message: 'Окончание должно быть позже начала.' })
   }
   return errors
 }
 
 async function submit() {
   if (pending.value || props.item.status !== 'available') return
-  const start = parseLocal(state.start)
-  const end = parseLocal(state.end)
+  const start = localBookingDate(state.startDate, state.startTime)
+  const end = localBookingDate(state.endDate, state.endTime)
   if (!start || !end || start >= end) return
   pending.value = true
   errorMessage.value = ''
@@ -52,9 +55,17 @@ async function submit() {
       body: { equipment_id: props.item.id, start_time: start.toISOString(), end_time: end.toISOString() }
     })
     open.value = false
-    toast.add({ title: 'Бронирование создано', description: props.item.name, color: 'success', icon: 'i-lucide-calendar-check' })
+    emit('created')
+    toast.add({
+      title: 'Бронирование создано',
+      description: props.item.name,
+      color: 'success',
+      icon: 'i-lucide-calendar-check',
+      actions: [{ label: 'Мои бронирования', to: '/bookings', color: 'success', variant: 'soft' }]
+    })
   } catch (error) {
     errorMessage.value = apiMessage(error)
+    if (apiStatus(error) === 409) emit('conflict')
   } finally {
     pending.value = false
   }
@@ -78,28 +89,22 @@ async function submit() {
         @submit="submit"
       >
         <p>Укажите интервал по местному времени устройства.</p>
-        <UFormField
-          name="start"
-          label="Начало"
-          required
-        >
-          <UInput
-            v-model="state.start"
-            type="datetime-local"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
-          name="end"
-          label="Окончание"
-          required
-        >
-          <UInput
-            v-model="state.end"
-            type="datetime-local"
-            class="w-full"
-          />
-        </UFormField>
+        <BookingDateTimePicker
+          v-model:date="state.startDate"
+          v-model:time="state.startTime"
+          date-field="startDate"
+          time-field="startTime"
+          label="Начало бронирования"
+          :disabled="pending"
+        />
+        <BookingDateTimePicker
+          v-model:date="state.endDate"
+          v-model:time="state.endTime"
+          date-field="endDate"
+          time-field="endTime"
+          label="Окончание бронирования"
+          :disabled="pending"
+        />
         <UAlert
           v-if="errorMessage"
           role="alert"

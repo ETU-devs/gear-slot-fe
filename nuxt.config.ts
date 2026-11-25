@@ -28,6 +28,7 @@ export default defineNuxtConfig({
     '/login': { headers: { 'cache-control': 'private, no-store' } },
     '/register': { headers: { 'cache-control': 'private, no-store' } },
     '/equipment': { headers: { 'cache-control': 'private, no-store' } },
+    '/equipment/**': { headers: { 'cache-control': 'private, no-store' } },
     '/bookings': { headers: { 'cache-control': 'private, no-store' } },
     '/api/**': { headers: { 'cache-control': 'private, no-store' } }
   },
